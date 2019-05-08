@@ -1,16 +1,15 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.uimanager;
 
 import java.util.Map;
 
+import android.graphics.drawable.ColorDrawable;
 import android.view.View;
 
 import com.facebook.react.bridge.ReadableMap;
@@ -37,7 +36,7 @@ import static org.fest.assertions.api.Assertions.offset;
  * Verify {@link View} view property being applied properly by {@link SimpleViewManager}
  */
 @RunWith(RobolectricTestRunner.class)
-@PowerMockIgnore({"org.mockito.*", "org.robolectric.*", "android.*"})
+@PowerMockIgnore({"org.mockito.*", "org.robolectric.*", "androidx.*", "android.*"})
 public class SimpleViewPropertyTest {
 
   @Rule
@@ -84,7 +83,7 @@ public class SimpleViewPropertyTest {
 
   @Test
   public void testOpacity() {
-    View view = mManager.createView(mThemedContext, new JSResponderHandler());
+    View view = mManager.createViewWithProps(mThemedContext, buildStyles(), new JSResponderHandler());
 
     mManager.updateProperties(view, buildStyles());
     assertThat(view.getAlpha()).isEqualTo(1.0f);
@@ -94,6 +93,20 @@ public class SimpleViewPropertyTest {
 
     mManager.updateProperties(view, buildStyles("opacity", null));
     assertThat(view.getAlpha()).isEqualTo(1.0f);
+  }
+
+  @Test
+  public void testBackgroundColor() {
+    View view = mManager.createViewWithProps(mThemedContext, buildStyles(), new JSResponderHandler());
+
+    mManager.updateProperties(view, buildStyles());
+    assertThat(view.getBackground()).isEqualTo(null);
+
+    mManager.updateProperties(view, buildStyles("backgroundColor", 12));
+    assertThat(((ColorDrawable)view.getBackground()).getColor()).isEqualTo(12);
+
+    mManager.updateProperties(view, buildStyles("backgroundColor", null));
+    assertThat(((ColorDrawable)view.getBackground()).getColor()).isEqualTo(0);
   }
 
   @Test

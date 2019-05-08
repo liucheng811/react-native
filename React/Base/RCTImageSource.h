@@ -1,15 +1,13 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <Foundation/Foundation.h>
 
-#import "RCTConvert.h"
+#import <React/RCTConvert.h>
 
 /**
  * Object containing an image URL and associated metadata.
@@ -33,13 +31,6 @@
  * Create a copy of the image source with the specified size and scale.
  */
 - (instancetype)imageSourceWithSize:(CGSize)size scale:(CGFloat)scale;
-
-@end
-
-@interface RCTImageSource (Deprecated)
-
-@property (nonatomic, strong, readonly) NSURL *imageURL
-__deprecated_msg("Use request.URL instead.");
 
 @end
 

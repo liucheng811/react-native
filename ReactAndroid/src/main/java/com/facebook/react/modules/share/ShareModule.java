@@ -1,31 +1,28 @@
 /**
- * Copyright (c) 2016-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.share;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.net.Uri;
 
 import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.JSApplicationIllegalArgumentException;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.common.ReactConstants;
+import com.facebook.react.module.annotations.ReactModule;
 
 /**
  * Intent module. Launch other activities or open URLs.
  */
+@ReactModule(name = "ShareModule")
 public class ShareModule extends ReactContextBaseJavaModule {
 
   /* package */ static final String ACTION_SHARED = "sharedAction";
@@ -80,11 +77,8 @@ public class ShareModule extends ReactContextBaseJavaModule {
       WritableMap result = Arguments.createMap();
       result.putString("action", ACTION_SHARED);
       promise.resolve(result);
-
     } catch (Exception e) {
       promise.reject(ERROR_UNABLE_TO_OPEN_DIALOG, "Failed to open share dialog");
     }
-
   }
-
 }

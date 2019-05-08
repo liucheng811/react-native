@@ -1,10 +1,8 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTEventDispatcher.h"
@@ -12,8 +10,9 @@
 #import "RCTAssert.h"
 #import "RCTBridge.h"
 #import "RCTBridge+Private.h"
-#import "RCTUtils.h"
+#import "RCTComponentEvent.h"
 #import "RCTProfile.h"
+#import "RCTUtils.h"
 
 const NSInteger RCTTextUpdateLagWarningThreshold = 3;
 
@@ -31,7 +30,7 @@ NSString *RCTNormalizeInputEventName(NSString *eventName)
 static NSNumber *RCTGetEventID(id<RCTEvent> event)
 {
   return @(
-    event.viewTag.intValue |
+    ([event respondsToSelector:@selector(viewTag)] ? event.viewTag.intValue : 0) |
     (((uint64_t)event.eventName.hash & 0xFFFF) << 32) |
     (((uint64_t)event.coalescingKey) << 48)
   );
@@ -46,6 +45,8 @@ static NSNumber *RCTGetEventID(id<RCTEvent> event)
   // This array contains ids of events in order they come in, so we can emit them to JS in the exact same order.
   NSMutableArray<NSNumber *> *_eventQueue;
   BOOL _eventsDispatchScheduled;
+  NSHashTable<id<RCTEventDispatcherObserver>> *_observers;
+  NSLock *_observersLock;
 }
 
 @synthesize bridge = _bridge;
@@ -59,6 +60,8 @@ RCT_EXPORT_MODULE()
   _eventQueue = [NSMutableArray new];
   _eventQueueLock = [NSLock new];
   _eventsDispatchScheduled = NO;
+  _observers = [NSHashTable weakObjectsHashTable];
+  _observersLock = [NSLock new];
 }
 
 - (void)sendAppEventWithName:(NSString *)name body:(id)body
@@ -74,20 +77,6 @@ RCT_EXPORT_MODULE()
   [_bridge enqueueJSCall:@"RCTDeviceEventEmitter"
                   method:@"emit"
                     args:body ? @[name, body] : @[name]
-              completion:NULL];
-}
-
-- (void)sendInputEventWithName:(NSString *)name body:(NSDictionary *)body
-{
-  if (RCT_DEBUG) {
-    RCTAssert([body[@"target"] isKindOfClass:[NSNumber class]],
-      @"Event body dictionary must include a 'target' property containing a React tag");
-  }
-
-  name = RCTNormalizeInputEventName(name);
-  [_bridge enqueueJSCall:@"RCTEventEmitter"
-                  method:@"receiveEvent"
-                    args:body ? @[body[@"target"], name, body] : @[body[@"target"], name]
               completion:NULL];
 }
 
@@ -108,7 +97,6 @@ RCT_EXPORT_MODULE()
 
   NSMutableDictionary *body = [[NSMutableDictionary alloc] initWithDictionary:@{
     @"eventCount": @(eventCount),
-    @"target": reactTag
   }];
 
   if (text) {
@@ -132,43 +120,70 @@ RCT_EXPORT_MODULE()
     body[@"key"] = key;
   }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  [self sendInputEventWithName:events[type] body:body];
-#pragma clang diagnostic pop
+  RCTComponentEvent *event = [[RCTComponentEvent alloc] initWithName:events[type]
+                                                             viewTag:reactTag
+                                                                body:body];
+  [self sendEvent:event];
 }
 
 - (void)sendEvent:(id<RCTEvent>)event
 {
-  [_eventQueueLock lock];
+  [_observersLock lock];
 
-  NSNumber *eventID = RCTGetEventID(event);
+  for (id<RCTEventDispatcherObserver> observer in _observers) {
+    [observer eventDispatcherWillDispatchEvent:event];
+  }
 
-  id<RCTEvent> previousEvent = _events[eventID];
-  if (previousEvent) {
-    RCTAssert([event canCoalesce], @"Got event %@ which cannot be coalesced, but has the same eventID %@ as the previous event %@", event, eventID, previousEvent);
-    event = [previousEvent coalesceWithEvent:event];
+  [_observersLock unlock];
+
+  if (event.canCoalesce) {
+    [_eventQueueLock lock];
+
+    NSNumber *eventID = RCTGetEventID(event);
+
+    id<RCTEvent> previousEvent = _events[eventID];
+    if (previousEvent) {
+      event = [previousEvent coalesceWithEvent:event];
+    } else {
+      [_eventQueue addObject:eventID];
+    }
+    _events[eventID] = event;
+
+    BOOL scheduleEventsDispatch = NO;
+    if (!_eventsDispatchScheduled) {
+      _eventsDispatchScheduled = YES;
+      scheduleEventsDispatch = YES;
+    }
+
+    // We have to release the lock before dispatching block with events,
+    // since dispatchBlock: can be executed synchronously on the same queue.
+    // (This is happening when chrome debugging is turned on.)
+    [_eventQueueLock unlock];
+
+    if (scheduleEventsDispatch) {
+      [_bridge dispatchBlock:^{
+        [self flushEventsQueue];
+      } queue:RCTJSThread];
+    }
   } else {
-    [_eventQueue addObject:eventID];
-  }
-  _events[eventID] = event;
-
-  BOOL scheduleEventsDispatch = NO;
-  if (!_eventsDispatchScheduled) {
-    _eventsDispatchScheduled = YES;
-    scheduleEventsDispatch = YES;
-  }
-
-  // We have to release the lock before dispatching block with events,
-  // since dispatchBlock: can be executed synchronously on the same queue.
-  // (This is happening when chrome debugging is turned on.)
-  [_eventQueueLock unlock];
-
-  if (scheduleEventsDispatch) {
     [_bridge dispatchBlock:^{
-      [self flushEventsQueue];
+      [self dispatchEvent:event];
     } queue:RCTJSThread];
   }
+}
+
+- (void)addDispatchObserver:(id<RCTEventDispatcherObserver>)observer
+{
+  [_observersLock lock];
+  [_observers addObject:observer];
+  [_observersLock unlock];
+}
+
+- (void)removeDispatchObserver:(id<RCTEventDispatcherObserver>)observer
+{
+  [_observersLock lock];
+  [_observers removeObject:observer];
+  [_observersLock unlock];
 }
 
 - (void)dispatchEvent:(id<RCTEvent>)event
@@ -181,7 +196,7 @@ RCT_EXPORT_MODULE()
   return RCTJSThread;
 }
 
-// js thread only (which suprisingly can be the main thread, depends on used JS executor)
+// js thread only (which surprisingly can be the main thread, depends on used JS executor)
 - (void)flushEventsQueue
 {
   [_eventQueueLock lock];

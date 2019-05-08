@@ -1,8 +1,9 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+// Copyright (c) Facebook, Inc. and its affiliates.
+
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
 
 package com.facebook.react;
-
-import javax.annotation.Nullable;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
@@ -10,17 +11,15 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
-import android.support.v4.app.FragmentActivity;
 import android.view.KeyEvent;
-import android.widget.Toast;
 
-import com.facebook.common.logging.FLog;
 import com.facebook.infer.annotation.Assertions;
-import com.facebook.react.common.ReactConstants;
+import com.facebook.react.bridge.Callback;
 import com.facebook.react.devsupport.DoubleTapReloadRecognizer;
 import com.facebook.react.modules.core.DefaultHardwareBackBtnHandler;
 import com.facebook.react.modules.core.PermissionListener;
+
+import javax.annotation.Nullable;
 
 /**
  * Delegate class for {@link ReactActivity} and {@link ReactFragmentActivity}. You can subclass this
@@ -28,29 +27,24 @@ import com.facebook.react.modules.core.PermissionListener;
  * class doesn't implement {@link ReactApplication}.
  */
 public class ReactActivityDelegate {
-  private static final String REDBOX_PERMISSION_MESSAGE =
-    "Overlay permissions needs to be granted in order for react native apps to run in dev mode";
 
   private final @Nullable Activity mActivity;
-  private final @Nullable FragmentActivity mFragmentActivity;
   private final @Nullable String mMainComponentName;
 
   private @Nullable ReactRootView mReactRootView;
   private @Nullable DoubleTapReloadRecognizer mDoubleTapReloadRecognizer;
   private @Nullable PermissionListener mPermissionListener;
+  private @Nullable Callback mPermissionsCallback;
 
+  @Deprecated
   public ReactActivityDelegate(Activity activity, @Nullable String mainComponentName) {
     mActivity = activity;
     mMainComponentName = mainComponentName;
-    mFragmentActivity = null;
   }
 
-  public ReactActivityDelegate(
-    FragmentActivity fragmentActivity,
-    @Nullable String mainComponentName) {
-    mFragmentActivity = fragmentActivity;
+  public ReactActivityDelegate(ReactActivity activity, @Nullable String mainComponentName) {
+    mActivity = activity;
     mMainComponentName = mainComponentName;
-    mActivity = null;
   }
 
   protected @Nullable Bundle getLaunchOptions() {
@@ -76,19 +70,14 @@ public class ReactActivityDelegate {
     return getReactNativeHost().getReactInstanceManager();
   }
 
-  protected void onCreate(Bundle savedInstanceState) {
-    if (getReactNativeHost().getUseDeveloperSupport() && Build.VERSION.SDK_INT >= 23) {
-      // Get permission to show redbox in dev builds.
-      if (!Settings.canDrawOverlays(getContext())) {
-        Intent serviceIntent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
-        getContext().startActivity(serviceIntent);
-        FLog.w(ReactConstants.TAG, REDBOX_PERMISSION_MESSAGE);
-        Toast.makeText(getContext(), REDBOX_PERMISSION_MESSAGE, Toast.LENGTH_LONG).show();
-      }
-    }
+  public String getMainComponentName() {
+    return mMainComponentName;
+  }
 
-    if (mMainComponentName != null) {
-      loadApp(mMainComponentName);
+  protected void onCreate(Bundle savedInstanceState) {
+    String mainComponentName = getMainComponentName();
+    if (mainComponentName != null) {
+      loadApp(mainComponentName);
     }
     mDoubleTapReloadRecognizer = new DoubleTapReloadRecognizer();
   }
@@ -117,6 +106,11 @@ public class ReactActivityDelegate {
         getPlainActivity(),
         (DefaultHardwareBackBtnHandler) getPlainActivity());
     }
+
+    if (mPermissionsCallback != null) {
+      mPermissionsCallback.invoke();
+      mPermissionsCallback = null;
+    }
   }
 
   protected void onDestroy() {
@@ -136,6 +130,16 @@ public class ReactActivityDelegate {
     }
   }
 
+  public boolean onKeyDown(int keyCode, KeyEvent event) {
+    if (getReactNativeHost().hasInstance()
+      && getReactNativeHost().getUseDeveloperSupport()
+      && keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+      event.startTracking();
+      return true;
+    }
+    return false;
+  }
+
   public boolean onKeyUp(int keyCode, KeyEvent event) {
     if (getReactNativeHost().hasInstance() && getReactNativeHost().getUseDeveloperSupport()) {
       if (keyCode == KeyEvent.KEYCODE_MENU) {
@@ -148,6 +152,16 @@ public class ReactActivityDelegate {
         getReactNativeHost().getReactInstanceManager().getDevSupportManager().handleReloadJS();
         return true;
       }
+    }
+    return false;
+  }
+
+  public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+    if (getReactNativeHost().hasInstance()
+        && getReactNativeHost().getUseDeveloperSupport()
+        && keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+      getReactNativeHost().getReactInstanceManager().showDevOptionsDialog();
+      return true;
     }
     return false;
   }
@@ -178,23 +192,24 @@ public class ReactActivityDelegate {
   }
 
   public void onRequestPermissionsResult(
-    int requestCode,
-    String[] permissions,
-    int[] grantResults) {
-    if (mPermissionListener != null &&
-      mPermissionListener.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
-      mPermissionListener = null;
-    }
+    final int requestCode,
+    final String[] permissions,
+    final int[] grantResults) {
+    mPermissionsCallback = new Callback() {
+      @Override
+      public void invoke(Object... args) {
+        if (mPermissionListener != null && mPermissionListener.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
+          mPermissionListener = null;
+        }
+      }
+    };
   }
 
-  private Context getContext() {
-    if (mActivity != null) {
-      return mActivity;
-    }
-    return Assertions.assertNotNull(mFragmentActivity);
+  protected Context getContext() {
+    return Assertions.assertNotNull(mActivity);
   }
 
-  private Activity getPlainActivity() {
+  protected Activity getPlainActivity() {
     return ((Activity) getContext());
   }
 }

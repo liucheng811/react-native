@@ -1,17 +1,15 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTLocalAssetImageLoader.h"
 
-#import <libkern/OSAtomic.h>
+#import <stdatomic.h>
 
-#import "RCTUtils.h"
+#import <React/RCTUtils.h>
 
 @implementation RCTLocalAssetImageLoader
 
@@ -41,29 +39,30 @@ RCT_EXPORT_MODULE()
                                               scale:(CGFloat)scale
                                          resizeMode:(RCTResizeMode)resizeMode
                                     progressHandler:(RCTImageLoaderProgressBlock)progressHandler
+                                 partialLoadHandler:(RCTImageLoaderPartialLoadBlock)partialLoadHandler
                                   completionHandler:(RCTImageLoaderCompletionBlock)completionHandler
 {
-  __block volatile uint32_t cancelled = 0;
+  __block atomic_bool cancelled = ATOMIC_VAR_INIT(NO);
   RCTExecuteOnMainQueue(^{
-    if (cancelled) {
+    if (atomic_load(&cancelled)) {
       return;
     }
 
-    NSString *imageName = RCTBundlePathForURL(imageURL);
-    UIImage *image = [UIImage imageNamed:imageName];
+    UIImage *image = RCTImageFromLocalAssetURL(imageURL);
     if (image) {
       if (progressHandler) {
         progressHandler(1, 1);
       }
       completionHandler(nil, image);
     } else {
-      NSString *message = [NSString stringWithFormat:@"Could not find image named %@", imageName];
+      NSString *message = [NSString stringWithFormat:@"Could not find image %@", imageURL];
+      RCTLogWarn(@"%@", message);
       completionHandler(RCTErrorWithMessage(message), nil);
     }
   });
 
   return ^{
-    OSAtomicOr32Barrier(1, &cancelled);
+    atomic_store(&cancelled, YES);
   };
 }
 

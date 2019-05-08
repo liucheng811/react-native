@@ -1,51 +1,44 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.timing;
 
-import android.view.Choreographer;
-
 import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.ExecutorToken;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.CatalystInstance;
 import com.facebook.react.bridge.JavaOnlyArray;
-import com.facebook.react.devsupport.DevSupportManager;
-import com.facebook.react.uimanager.ReactChoreographer;
+import com.facebook.react.devsupport.interfaces.DevSupportManager;
 import com.facebook.react.common.SystemClock;
-import com.facebook.react.modules.core.JSTimersExecution;
+import com.facebook.react.modules.core.ChoreographerCompat;
+import com.facebook.react.modules.core.JSTimers;
+import com.facebook.react.modules.core.ReactChoreographer;
 import com.facebook.react.modules.core.Timing;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.modules.junit4.rule.PowerMockRule;
-import org.robolectric.RuntimeEnvironment;
 import org.robolectric.RobolectricTestRunner;
-import org.robolectric.annotation.Config;
 
 import static org.mockito.Mockito.*;
 
 /**
  * Tests for {@link Timing}.
  */
+// DISABLED, BROKEN https://circleci.com/gh/facebook/react-native/12068
+// t=13905097
 @PrepareForTest({Arguments.class, SystemClock.class, ReactChoreographer.class})
-@PowerMockIgnore({"org.mockito.*", "org.robolectric.*", "android.*"})
+@PowerMockIgnore({"org.mockito.*", "org.robolectric.*", "androidx.*", "android.*"})
 @RunWith(RobolectricTestRunner.class)
 public class TimingModuleTest {
 
@@ -56,8 +49,7 @@ public class TimingModuleTest {
   private PostFrameCallbackHandler mPostFrameCallbackHandler;
   private PostFrameIdleCallbackHandler mIdlePostFrameCallbackHandler;
   private long mCurrentTimeNs;
-  private JSTimersExecution mJSTimersMock;
-  private ExecutorToken mExecutorTokenMock;
+  private JSTimers mJSTimersMock;
 
   @Rule
   public PowerMockRule rule = new PowerMockRule();
@@ -66,12 +58,12 @@ public class TimingModuleTest {
   public void prepareModules() {
     PowerMockito.mockStatic(Arguments.class);
     when(Arguments.createArray()).thenAnswer(
-        new Answer<Object>() {
-          @Override
-          public Object answer(InvocationOnMock invocation) throws Throwable {
-            return new JavaOnlyArray();
-          }
-        });
+      new Answer<Object>() {
+        @Override
+        public Object answer(InvocationOnMock invocation) throws Throwable {
+          return new JavaOnlyArray();
+        }
+      });
 
     PowerMockito.mockStatic(SystemClock.class);
     when(SystemClock.uptimeMillis()).thenReturn(mCurrentTimeNs / 1000000);
@@ -91,26 +83,25 @@ public class TimingModuleTest {
     mIdlePostFrameCallbackHandler = new PostFrameIdleCallbackHandler();
 
     doAnswer(mPostFrameCallbackHandler)
-        .when(mReactChoreographerMock)
-        .postFrameCallback(
-            eq(ReactChoreographer.CallbackType.TIMERS_EVENTS),
-            any(Choreographer.FrameCallback.class));
+      .when(mReactChoreographerMock)
+      .postFrameCallback(
+        eq(ReactChoreographer.CallbackType.TIMERS_EVENTS),
+        any(ChoreographerCompat.FrameCallback.class));
 
     doAnswer(mIdlePostFrameCallbackHandler)
-        .when(mReactChoreographerMock)
-        .postFrameCallback(
-            eq(ReactChoreographer.CallbackType.IDLE_EVENT),
-            any(Choreographer.FrameCallback.class));
+      .when(mReactChoreographerMock)
+      .postFrameCallback(
+        eq(ReactChoreographer.CallbackType.IDLE_EVENT),
+        any(ChoreographerCompat.FrameCallback.class));
 
     mTiming = new Timing(reactContext, mock(DevSupportManager.class));
-    mJSTimersMock = mock(JSTimersExecution.class);
-    mExecutorTokenMock = mock(ExecutorToken.class);
-    when(reactContext.getJSModule(mExecutorTokenMock, JSTimersExecution.class)).thenReturn(mJSTimersMock);
+    mJSTimersMock = mock(JSTimers.class);
+    when(reactContext.getJSModule(JSTimers.class)).thenReturn(mJSTimersMock);
 
     doAnswer(new Answer() {
       @Override
       public Object answer(InvocationOnMock invocation) throws Throwable {
-        ((Runnable)invocation.getArguments()[0]).run();
+        ((Runnable) invocation.getArguments()[0]).run();
         return null;
       }
     }).when(reactContext).runOnJSQueueThread(any(Runnable.class));
@@ -119,8 +110,8 @@ public class TimingModuleTest {
   }
 
   private void stepChoreographerFrame() {
-    Choreographer.FrameCallback callback = mPostFrameCallbackHandler.getAndResetFrameCallback();
-    Choreographer.FrameCallback idleCallback = mIdlePostFrameCallbackHandler.getAndResetFrameCallback();
+    ChoreographerCompat.FrameCallback callback = mPostFrameCallbackHandler.getAndResetFrameCallback();
+    ChoreographerCompat.FrameCallback idleCallback = mIdlePostFrameCallbackHandler.getAndResetFrameCallback();
 
     mCurrentTimeNs += FRAME_TIME_NS;
     when(SystemClock.uptimeMillis()).thenReturn(mCurrentTimeNs / 1000000);
@@ -136,9 +127,9 @@ public class TimingModuleTest {
   @Test
   public void testSimpleTimer() {
     mTiming.onHostResume();
-    mTiming.createTimer(mExecutorTokenMock, 1, 1, 0, false);
+    mTiming.createTimer(1, 1, 0, false);
     stepChoreographerFrame();
-    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(1));
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(1.0));
     reset(mJSTimersMock);
     stepChoreographerFrame();
     verifyNoMoreInteractions(mJSTimersMock);
@@ -146,26 +137,26 @@ public class TimingModuleTest {
 
   @Test
   public void testSimpleRecurringTimer() {
-    mTiming.createTimer(mExecutorTokenMock, 100, 1, 0, true);
+    mTiming.createTimer(100, 1, 0, true);
     mTiming.onHostResume();
     stepChoreographerFrame();
-    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(100));
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(100.0));
 
     reset(mJSTimersMock);
     stepChoreographerFrame();
-    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(100));
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(100.0));
   }
 
   @Test
   public void testCancelRecurringTimer() {
     mTiming.onHostResume();
-    mTiming.createTimer(mExecutorTokenMock, 105, 1, 0, true);
+    mTiming.createTimer(105, 1, 0, true);
 
     stepChoreographerFrame();
-    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(105));
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(105.0));
 
     reset(mJSTimersMock);
-    mTiming.deleteTimer(mExecutorTokenMock, 105);
+    mTiming.deleteTimer(105);
     stepChoreographerFrame();
     verifyNoMoreInteractions(mJSTimersMock);
   }
@@ -173,10 +164,10 @@ public class TimingModuleTest {
   @Test
   public void testPausingAndResuming() {
     mTiming.onHostResume();
-    mTiming.createTimer(mExecutorTokenMock, 41, 1, 0, true);
+    mTiming.createTimer(41, 1, 0, true);
 
     stepChoreographerFrame();
-    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41));
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41.0));
 
     reset(mJSTimersMock);
     mTiming.onHostPause();
@@ -186,19 +177,75 @@ public class TimingModuleTest {
     reset(mJSTimersMock);
     mTiming.onHostResume();
     stepChoreographerFrame();
-    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41));
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41.0));
+  }
+
+  @Test
+  public void testHeadlessJsTaskInBackground() {
+    mTiming.onHostPause();
+    mTiming.onHeadlessJsTaskStart(42);
+    mTiming.createTimer(41, 1, 0, true);
+
+    stepChoreographerFrame();
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41.0));
+
+    reset(mJSTimersMock);
+    mTiming.onHeadlessJsTaskFinish(42);
+    stepChoreographerFrame();
+    verifyNoMoreInteractions(mJSTimersMock);
+  }
+
+  @Test
+  public void testHeadlessJsTaskInForeground() {
+    mTiming.onHostResume();
+    mTiming.onHeadlessJsTaskStart(42);
+    mTiming.createTimer(41, 1, 0, true);
+
+    stepChoreographerFrame();
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41.0));
+
+    reset(mJSTimersMock);
+    mTiming.onHeadlessJsTaskFinish(42);
+    stepChoreographerFrame();
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41.0));
+
+    reset(mJSTimersMock);
+    mTiming.onHostPause();
+    verifyNoMoreInteractions(mJSTimersMock);
+  }
+
+  @Test
+  public void testHeadlessJsTaskIntertwine() {
+    mTiming.onHostResume();
+    mTiming.onHeadlessJsTaskStart(42);
+    mTiming.createTimer(41, 1, 0, true);
+    mTiming.onHostPause();
+
+    stepChoreographerFrame();
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41.0));
+
+    reset(mJSTimersMock);
+    mTiming.onHostResume();
+    mTiming.onHeadlessJsTaskFinish(42);
+    stepChoreographerFrame();
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(41.0));
+
+    reset(mJSTimersMock);
+    mTiming.onHostPause();
+    stepChoreographerFrame();
+    verifyNoMoreInteractions(mJSTimersMock);
   }
 
   @Test
   public void testSetTimeoutZero() {
-    mTiming.createTimer(mExecutorTokenMock, 100, 0, 0, false);
-    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(100));
+    mTiming.createTimer(100, 0, 0, false);
+    verify(mJSTimersMock).callTimers(JavaOnlyArray.of(100.0));
   }
 
   @Test
   public void testIdleCallback() {
     mTiming.onHostResume();
-    mTiming.setSendIdleEvents(mExecutorTokenMock, true);
+    mTiming.setSendIdleEvents(true);
 
     stepChoreographerFrame();
     verify(mJSTimersMock).callIdleCallbacks(SystemClock.currentTimeMillis());
@@ -206,17 +253,17 @@ public class TimingModuleTest {
 
   private static class PostFrameIdleCallbackHandler implements Answer<Void> {
 
-    private Choreographer.FrameCallback mFrameCallback;
+    private ChoreographerCompat.FrameCallback mFrameCallback;
 
     @Override
     public Void answer(InvocationOnMock invocation) throws Throwable {
       Object[] args = invocation.getArguments();
-      mFrameCallback = (Choreographer.FrameCallback) args[1];
+      mFrameCallback = (ChoreographerCompat.FrameCallback) args[1];
       return null;
     }
 
-    public Choreographer.FrameCallback getAndResetFrameCallback() {
-      Choreographer.FrameCallback callback = mFrameCallback;
+    public ChoreographerCompat.FrameCallback getAndResetFrameCallback() {
+      ChoreographerCompat.FrameCallback callback = mFrameCallback;
       mFrameCallback = null;
       return callback;
     }
@@ -224,17 +271,17 @@ public class TimingModuleTest {
 
   private static class PostFrameCallbackHandler implements Answer<Void> {
 
-    private Choreographer.FrameCallback mFrameCallback;
+    private ChoreographerCompat.FrameCallback mFrameCallback;
 
     @Override
     public Void answer(InvocationOnMock invocation) throws Throwable {
       Object[] args = invocation.getArguments();
-      mFrameCallback = (Choreographer.FrameCallback) args[1];
+      mFrameCallback = (ChoreographerCompat.FrameCallback) args[1];
       return null;
     }
 
-    public Choreographer.FrameCallback getAndResetFrameCallback() {
-      Choreographer.FrameCallback callback = mFrameCallback;
+    public ChoreographerCompat.FrameCallback getAndResetFrameCallback() {
+      ChoreographerCompat.FrameCallback callback = mFrameCallback;
       mFrameCallback = null;
       return callback;
     }

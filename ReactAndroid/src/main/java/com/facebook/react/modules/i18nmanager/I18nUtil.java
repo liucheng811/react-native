@@ -1,20 +1,16 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.i18nmanager;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.SharedPreferences.Editor;
-import android.support.v4.text.TextUtilsCompat;
-import android.support.v4.view.ViewCompat;
-
+import androidx.core.text.TextUtilsCompat;
+import androidx.core.view.ViewCompat;
 import java.util.Locale;
 
 public class I18nUtil {
@@ -26,13 +22,15 @@ public class I18nUtil {
     "RCTI18nUtil_allowRTL";
   private static final String KEY_FOR_PREFS_FORCERTL =
     "RCTI18nUtil_forceRTL";
+  private static final String KEY_FOR_PERFS_MAKE_RTL_FLIP_LEFT_AND_RIGHT_STYLES =
+    "RCTI18nUtil_makeRTLFlipLeftAndRightStyles";
 
   private I18nUtil() {
      // Exists only to defeat instantiation.
   }
 
   public static I18nUtil getInstance() {
-    if(sharedI18nUtilInstance == null) {
+    if (sharedI18nUtilInstance == null) {
       sharedI18nUtilInstance = new I18nUtil();
     }
     return sharedI18nUtilInstance;
@@ -55,13 +53,22 @@ public class I18nUtil {
   /**
    * Should be used very early during app start up
    * Before the bridge is initialized
+   * @return whether the app allows RTL layout, default is true
    */
   private boolean isRTLAllowed(Context context) {
-    return isPrefSet(context, KEY_FOR_PREFS_ALLOWRTL, false);
+    return isPrefSet(context, KEY_FOR_PREFS_ALLOWRTL, true);
   }
 
   public void allowRTL(Context context, boolean allowRTL) {
     setPref(context, KEY_FOR_PREFS_ALLOWRTL, allowRTL);
+  }
+
+  public boolean doLeftAndRightSwapInRTL(Context context) {
+    return isPrefSet(context, KEY_FOR_PERFS_MAKE_RTL_FLIP_LEFT_AND_RIGHT_STYLES, true);
+  }
+
+  public void swapLeftAndRightInRTL(Context context, boolean flip) {
+    setPref(context, KEY_FOR_PERFS_MAKE_RTL_FLIP_LEFT_AND_RIGHT_STYLES, flip);
   }
 
   /**

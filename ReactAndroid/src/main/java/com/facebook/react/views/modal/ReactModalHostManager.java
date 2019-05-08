@@ -1,42 +1,35 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.views.modal;
 
-import javax.annotation.Nullable;
-
-import java.util.Map;
-
 import android.content.DialogInterface;
-
-import com.facebook.react.bridge.ReactApplicationContext;
+import android.graphics.Point;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.common.MapBuilder;
+import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.uimanager.LayoutShadowNode;
 import com.facebook.react.uimanager.PixelUtil;
+import com.facebook.react.uimanager.StateWrapper;
 import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.UIManagerModule;
 import com.facebook.react.uimanager.ViewGroupManager;
 import com.facebook.react.uimanager.annotations.ReactProp;
 import com.facebook.react.uimanager.events.EventDispatcher;
+import java.util.Map;
 
 /**
  * View manager for {@link ReactModalHostView} components.
  */
+@ReactModule(name = ReactModalHostManager.REACT_CLASS)
 public class ReactModalHostManager extends ViewGroupManager<ReactModalHostView> {
 
-  private static final String REACT_CLASS = "RCTModalHostView";
-
-  private final ReactApplicationContext mContext;
-
-  public ReactModalHostManager(ReactApplicationContext context) {
-    mContext = context;
-  }
+  public static final String REACT_CLASS = "RCTModalHostView";
 
   @Override
   public String getName() {
@@ -74,6 +67,11 @@ public class ReactModalHostManager extends ViewGroupManager<ReactModalHostView> 
     view.setTransparent(transparent);
   }
 
+  @ReactProp(name = "hardwareAccelerated")
+  public void setHardwareAccelerated(ReactModalHostView view, boolean hardwareAccelerated) {
+    view.setHardwareAccelerated(hardwareAccelerated);
+  }
+
   @Override
   protected void addEventEmitters(
       ThemedReactContext reactContext,
@@ -105,20 +103,17 @@ public class ReactModalHostManager extends ViewGroupManager<ReactModalHostView> 
   }
 
   @Override
-  public @Nullable Map<String, Object> getExportedViewConstants() {
-    final int heightResId = mContext.getResources().getIdentifier("status_bar_height", "dimen", "android");
-    final float height = heightResId > 0 ?
-      PixelUtil.toDIPFromPixel(mContext.getResources().getDimensionPixelSize(heightResId)) :
-      0;
-
-    return MapBuilder.<String, Object>of(
-      "StatusBarHeight", height
-    );
-  }
-
-  @Override
   protected void onAfterUpdateTransaction(ReactModalHostView view) {
     super.onAfterUpdateTransaction(view);
     view.showOrUpdate();
+  }
+
+  @Override
+  public void updateState(ReactModalHostView view, StateWrapper stateWrapper) {
+    Point modalSize = ModalHostHelper.getModalHostSize(view.getContext());
+    WritableMap map = new WritableNativeMap();
+    map.putDouble("screenWidth", PixelUtil.toDIPFromPixel(modalSize.x));
+    map.putDouble("screenHeight", PixelUtil.toDIPFromPixel(modalSize.y));
+    stateWrapper.updateState(map);
   }
 }

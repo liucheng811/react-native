@@ -1,10 +1,8 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.devsupport;
@@ -35,7 +33,8 @@ import com.facebook.infer.annotation.Assertions;
 import com.facebook.react.R;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.common.ReactConstants;
-import com.facebook.react.devsupport.StackTraceHelper.StackFrame;
+import com.facebook.react.devsupport.interfaces.DevSupportManager;
+import com.facebook.react.devsupport.interfaces.StackFrame;
 import com.facebook.react.devsupport.RedBoxHandler.ReportCompletedListener;
 
 import okhttp3.MediaType;
@@ -56,7 +55,6 @@ import org.json.JSONObject;
   private ListView mStackView;
   private Button mReloadJsButton;
   private Button mDismissButton;
-  private Button mCopyToClipboardButton;
   private @Nullable Button mReportButton;
   private @Nullable TextView mReportTextView;
   private @Nullable ProgressBar mLoadingIndicator;
@@ -98,10 +96,11 @@ import org.json.JSONObject;
       String sourceUrl = mDevSupportManager.getSourceUrl();
 
       mRedBoxHandler.reportRedbox(
-        title,
-        stack,
-        sourceUrl,
-        Assertions.assertNotNull(mReportCompletedListener));
+          view.getContext(),
+          title,
+          stack,
+          sourceUrl,
+          Assertions.assertNotNull(mReportCompletedListener));
     }
   };
 
@@ -170,7 +169,8 @@ import org.json.JSONObject;
             ? (TextView) convertView
             : (TextView) LayoutInflater.from(parent.getContext())
                 .inflate(R.layout.redbox_item_title, parent, false);
-        title.setText(mTitle);
+        // Remove ANSI color codes from the title
+        title.setText(mTitle.replaceAll("\\x1b\\[[0-9;]*m", ""));
         return title;
       } else {
         if (convertView == null) {
@@ -229,35 +229,6 @@ import org.json.JSONObject;
     }
   }
 
-  private static class CopyToHostClipBoardTask extends AsyncTask<String, Void, Void> {
-    private final DevSupportManager mDevSupportManager;
-
-    private CopyToHostClipBoardTask(DevSupportManager devSupportManager) {
-      mDevSupportManager = devSupportManager;
-    }
-
-    @Override
-    protected Void doInBackground(String... clipBoardString) {
-      try {
-        String sendClipBoardUrl =
-            Uri.parse(mDevSupportManager.getSourceUrl()).buildUpon()
-                .path("/copy-to-clipboard")
-                .query(null)
-                .build()
-                .toString();
-        for (String string: clipBoardString) {
-          OkHttpClient client = new OkHttpClient();
-          RequestBody body = RequestBody.create(null, string);
-          Request request = new Request.Builder().url(sendClipBoardUrl).post(body).build();
-          client.newCall(request).execute();
-        }
-      } catch (Exception e) {
-        FLog.e(ReactConstants.TAG, "Could not copy to the host clipboard", e);
-      }
-      return null;
-    }
-  }
-
   protected RedBoxDialog(
     Context context,
     DevSupportManager devSupportManager,
@@ -289,19 +260,6 @@ import org.json.JSONObject;
         dismiss();
       }
     });
-    mCopyToClipboardButton = (Button) findViewById(R.id.rn_redbox_copy_button);
-    mCopyToClipboardButton.setOnClickListener(new View.OnClickListener() {
-      @Override
-      public void onClick(View v) {
-        String title = mDevSupportManager.getLastErrorTitle();
-        StackFrame[] stack = mDevSupportManager.getLastErrorStack();
-        Assertions.assertNotNull(title);
-        Assertions.assertNotNull(stack);
-        new CopyToHostClipBoardTask(mDevSupportManager).executeOnExecutor(
-            AsyncTask.THREAD_POOL_EXECUTOR,
-            StackTraceHelper.formatStackTrace(title, stack));
-      }
-    });
 
     if (mRedBoxHandler != null && mRedBoxHandler.isReportEnabled()) {
       mLoadingIndicator = (ProgressBar) findViewById(R.id.rn_redbox_loading_indicator);
@@ -321,7 +279,7 @@ import org.json.JSONObject;
   /**
    * Show the report button, hide the report textview and the loading indicator.
    */
-  public void resetReporting(boolean enabled) {
+  public void resetReporting() {
     if (mRedBoxHandler == null || !mRedBoxHandler.isReportEnabled()) {
       return;
     }
@@ -329,8 +287,7 @@ import org.json.JSONObject;
     Assertions.assertNotNull(mReportTextView).setVisibility(View.GONE);
     Assertions.assertNotNull(mLoadingIndicator).setVisibility(View.GONE);
     Assertions.assertNotNull(mLineSeparator).setVisibility(View.GONE);
-    Assertions.assertNotNull(mReportButton).setVisibility(
-      enabled ? View.VISIBLE : View.GONE);
+    Assertions.assertNotNull(mReportButton).setVisibility(View.VISIBLE);
     Assertions.assertNotNull(mReportButton).setEnabled(true);
   }
 

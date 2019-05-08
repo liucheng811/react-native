@@ -1,15 +1,11 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.views.text;
-
-import javax.annotation.Nullable;
 
 import android.content.res.AssetManager;
 import android.graphics.Paint;
@@ -17,7 +13,10 @@ import android.graphics.Typeface;
 import android.text.TextPaint;
 import android.text.style.MetricAffectingSpan;
 
-public class CustomStyleSpan extends MetricAffectingSpan {
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+public class CustomStyleSpan extends MetricAffectingSpan implements ReactSpan {
 
   /**
    * A {@link MetricAffectingSpan} that allows to change the style of the displayed font.
@@ -41,7 +40,7 @@ public class CustomStyleSpan extends MetricAffectingSpan {
       int fontStyle,
       int fontWeight,
       @Nullable String fontFamily,
-      AssetManager assetManager) {
+      @NonNull AssetManager assetManager) {
     mStyle = fontStyle;
     mWeight = fontWeight;
     mFontFamily = fontFamily;
@@ -54,7 +53,7 @@ public class CustomStyleSpan extends MetricAffectingSpan {
   }
 
   @Override
-  public void updateMeasureState(TextPaint paint) {
+  public void updateMeasureState(@NonNull TextPaint paint) {
     apply(paint, mStyle, mWeight, mFontFamily, mAssetManager);
   }
 
@@ -116,6 +115,6 @@ public class CustomStyleSpan extends MetricAffectingSpan {
     } else {
       paint.setTypeface(Typeface.defaultFromStyle(want));
     }
+    paint.setSubpixelText(true);
   }
-
 }

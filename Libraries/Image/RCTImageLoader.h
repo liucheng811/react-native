@@ -1,21 +1,23 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <UIKit/UIKit.h>
 
-#import "RCTBridge.h"
-#import "RCTURLRequestHandler.h"
-#import "RCTResizeMode.h"
+#import <React/RCTBridge.h>
+#import <React/RCTResizeMode.h>
+#import <React/RCTURLRequestHandler.h>
 
 typedef void (^RCTImageLoaderProgressBlock)(int64_t progress, int64_t total);
+typedef void (^RCTImageLoaderPartialLoadBlock)(UIImage *image);
 typedef void (^RCTImageLoaderCompletionBlock)(NSError *error, UIImage *image);
 typedef dispatch_block_t RCTImageLoaderCancellationBlock;
+
+@protocol RCTImageURLLoader;
+@protocol RCTImageDataDecoder;
 
 /**
  * Provides an interface to use for providing a image caching strategy.
@@ -25,21 +27,37 @@ typedef dispatch_block_t RCTImageLoaderCancellationBlock;
 - (UIImage *)imageForUrl:(NSString *)url
                     size:(CGSize)size
                    scale:(CGFloat)scale
-              resizeMode:(RCTResizeMode)resizeMode
-            responseDate:(NSString *)responseDate;
+              resizeMode:(RCTResizeMode)resizeMode;
 
 - (void)addImageToCache:(UIImage *)image
                     URL:(NSString *)url
                    size:(CGSize)size
                   scale:(CGFloat)scale
              resizeMode:(RCTResizeMode)resizeMode
-           responseDate:(NSString *)responseDate;
+               response:(NSURLResponse *)response;
+
+@end
+
+/**
+ * If available, RCTImageRedirectProtocol is invoked before loading an asset.
+ * Implementation should return either a new URL or nil when redirection is
+ * not needed.
+ */
+
+@protocol RCTImageRedirectProtocol
+
+- (NSURL *)redirectAssetsURL:(NSURL *)URL;
 
 @end
 
 @interface UIImage (React)
 
 @property (nonatomic, copy) CAKeyframeAnimation *reactKeyframeAnimation;
+
+/**
+ * Memory bytes of the image with the default calculation of static image or GIF. Custom calculations of decoded bytes can be assigned manually.
+ */
+@property (nonatomic, assign) NSInteger reactDecodedImageBytes;
 
 @end
 
@@ -70,6 +88,12 @@ typedef dispatch_block_t RCTImageLoaderCancellationBlock;
  */
 @property (nonatomic, assign) NSUInteger maxConcurrentDecodingBytes;
 
+- (instancetype)init;
+- (instancetype)initWithRedirectDelegate:(id<RCTImageRedirectProtocol>)redirectDelegate NS_DESIGNATED_INITIALIZER;
+- (instancetype)initWithRedirectDelegate:(id<RCTImageRedirectProtocol>)redirectDelegate
+                              loadersProvider:(NSArray<id<RCTImageURLLoader>> * (^)(void))getLoaders
+                             decodersProvider:(NSArray<id<RCTImageDataDecoder>> * (^)(void))getDecoders;
+
 /**
  * Loads the specified image at the highest available resolution.
  * Can be called from any thread, will call back on an unspecified thread.
@@ -82,6 +106,9 @@ typedef dispatch_block_t RCTImageLoaderCancellationBlock;
  * select the optimal dimensions for the loaded image. The `clipped` option
  * controls whether the image will be clipped to fit the specified size exactly,
  * or if the original aspect ratio should be retained.
+ * `partialLoadBlock` is meant for custom image loaders that do not ship with the core RN library.
+ * It is meant to be called repeatedly while loading the image as higher quality versions are decoded,
+ * for instance with progressive JPEGs.
  */
 - (RCTImageLoaderCancellationBlock)loadImageWithURLRequest:(NSURLRequest *)imageURLRequest
                                                       size:(CGSize)size
@@ -89,6 +116,7 @@ typedef dispatch_block_t RCTImageLoaderCancellationBlock;
                                                    clipped:(BOOL)clipped
                                                 resizeMode:(RCTResizeMode)resizeMode
                                              progressBlock:(RCTImageLoaderProgressBlock)progressBlock
+                                          partialLoadBlock:(RCTImageLoaderPartialLoadBlock)partialLoadBlock
                                            completionBlock:(RCTImageLoaderCompletionBlock)completionBlock;
 
 /**
@@ -111,10 +139,18 @@ typedef dispatch_block_t RCTImageLoaderCancellationBlock;
  */
 - (RCTImageLoaderCancellationBlock)getImageSizeForURLRequest:(NSURLRequest *)imageURLRequest
                                                        block:(void(^)(NSError *error, CGSize size))completionBlock;
+/**
+ * Determines whether given image URLs are cached locally. The `requests` array is expected
+ * to contain objects convertible to NSURLRequest. The return value maps URLs to strings:
+ * "disk" for images known to be cached in non-volatile storage, "memory" for images known
+ * to be cached in memory. Dictionary items corresponding to images that are not known to be
+ * cached are simply missing.
+ */
+- (NSDictionary *)getImageCacheStatus:(NSArray *)requests;
 
 /**
  * Allows developers to set their own caching implementation for
- * decoded images as long as it conforms to the RCTImageCacheDelegate
+ * decoded images as long as it conforms to the RCTImageCache
  * protocol. This method should be called in bridgeDidInitializeModule.
  */
 - (void)setImageCache:(id<RCTImageCache>)cache;
@@ -155,6 +191,7 @@ typedef dispatch_block_t RCTImageLoaderCancellationBlock;
                                              scale:(CGFloat)scale
                                         resizeMode:(RCTResizeMode)resizeMode
                                    progressHandler:(RCTImageLoaderProgressBlock)progressHandler
+                                partialLoadHandler:(RCTImageLoaderPartialLoadBlock)partialLoadHandler
                                  completionHandler:(RCTImageLoaderCompletionBlock)completionHandler;
 
 @optional

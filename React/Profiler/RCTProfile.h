@@ -1,16 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <Foundation/Foundation.h>
 
-#import "RCTDefines.h"
-#import "RCTAssert.h"
+#import <React/RCTAssert.h>
+#import <React/RCTDefines.h>
 
 /**
  * RCTProfile
@@ -68,13 +66,13 @@ RCT_EXTERN void _RCTProfileBeginEvent(NSThread *calleeThread,
                                       NSTimeInterval time,
                                       uint64_t tag,
                                       NSString *name,
-                                      NSDictionary *args);
-#define RCT_PROFILE_BEGIN_EVENT(...) \
+                                      NSDictionary<NSString *, NSString *> *args);
+#define RCT_PROFILE_BEGIN_EVENT(tag, name, args) \
   do { \
     if (RCTProfileIsProfiling()) { \
       NSThread *__calleeThread = [NSThread currentThread]; \
       NSTimeInterval __time = CACurrentMediaTime(); \
-      _RCTProfileBeginEvent(__calleeThread, __time, __VA_ARGS__); \
+      _RCTProfileBeginEvent(__calleeThread, __time, tag, name, args); \
     } \
   } while(0)
 
@@ -87,16 +85,15 @@ RCT_EXTERN void _RCTProfileEndEvent(NSThread *calleeThread,
                                     NSString *threadName,
                                     NSTimeInterval time,
                                     uint64_t tag,
-                                    NSString *category,
-                                    NSDictionary *args);
+                                    NSString *category);
 
-#define RCT_PROFILE_END_EVENT(...) \
+#define RCT_PROFILE_END_EVENT(tag, category) \
   do { \
     if (RCTProfileIsProfiling()) { \
       NSThread *__calleeThread = [NSThread currentThread]; \
       NSString *__threadName = RCTCurrentThreadName(); \
       NSTimeInterval __time = CACurrentMediaTime(); \
-      _RCTProfileEndEvent(__calleeThread, __threadName, __time, __VA_ARGS__); \
+      _RCTProfileEndEvent(__calleeThread, __threadName, __time, tag, category); \
     } \
   } while(0)
 
@@ -105,7 +102,7 @@ RCT_EXTERN void _RCTProfileEndEvent(NSThread *calleeThread,
  */
 RCT_EXTERN NSUInteger RCTProfileBeginAsyncEvent(uint64_t tag,
                                                 NSString *name,
-                                                NSDictionary *args);
+                                                NSDictionary<NSString *, NSString *> *args);
 
 /**
  * The ID returned by BeginEvent should then be passed into EndEvent, with the
@@ -116,8 +113,7 @@ RCT_EXTERN void RCTProfileEndAsyncEvent(uint64_t tag,
                                         NSString *category,
                                         NSUInteger cookie,
                                         NSString *name,
-                                        NSString *threadName,
-                                        NSDictionary *args);
+                                        NSString *threadName);
 
 /**
  * An event that doesn't have a duration (i.e. Notification, VSync, etc)
@@ -171,13 +167,13 @@ RCT_EXTERN void RCTProfileSendResult(RCTBridge *bridge, NSString *route, NSData 
 
 typedef struct {
   const char *key;
-  int key_len;
+  unsigned long key_len;
   const char *value;
-  int value_len;
+  unsigned long value_len;
 } systrace_arg_t;
 
 typedef struct {
-  void (*start)(uint64_t enabledTags, char *buffer, size_t bufferSize);
+  char *(*start)(void);
   void (*stop)(void);
 
   void (*begin_section)(uint64_t tag, const char *name, size_t numArgs, systrace_arg_t *args);

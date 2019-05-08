@@ -1,10 +1,8 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.image;
@@ -20,23 +18,32 @@ import com.facebook.datasource.BaseDataSubscriber;
 import com.facebook.datasource.DataSource;
 import com.facebook.datasource.DataSubscriber;
 import com.facebook.drawee.backends.pipeline.Fresco;
+import com.facebook.imagepipeline.core.ImagePipeline;
 import com.facebook.imagepipeline.image.CloseableImage;
 import com.facebook.imagepipeline.request.ImageRequest;
 import com.facebook.imagepipeline.request.ImageRequestBuilder;
+import com.facebook.react.modules.fresco.ReactNetworkImageRequest;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.GuardedAsyncTask;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableArray;
+import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.module.annotations.ReactModule;
+import com.facebook.react.views.imagehelper.ImageSource;
 
+@ReactModule(name = ImageLoaderModule.NAME)
 public class ImageLoaderModule extends ReactContextBaseJavaModule implements
   LifecycleEventListener {
 
   private static final String ERROR_INVALID_URI = "E_INVALID_URI";
   private static final String ERROR_PREFETCH_FAILURE = "E_PREFETCH_FAILURE";
   private static final String ERROR_GET_SIZE_FAILURE = "E_GET_SIZE_FAILURE";
+  public static final String NAME = "ImageLoader";
 
   private final Object mCallerContext;
   private final Object mEnqueuedRequestMonitor = new Object();
@@ -54,7 +61,7 @@ public class ImageLoaderModule extends ReactContextBaseJavaModule implements
 
   @Override
   public String getName() {
-    return "ImageLoader";
+    return NAME;
   }
 
   /**
@@ -73,8 +80,69 @@ public class ImageLoaderModule extends ReactContextBaseJavaModule implements
       return;
     }
 
-    Uri uri = Uri.parse(uriString);
-    ImageRequest request = ImageRequestBuilder.newBuilderWithSource(uri).build();
+    ImageSource source = new ImageSource(getReactApplicationContext(), uriString);
+    ImageRequest request = ImageRequestBuilder.newBuilderWithSource(source.getUri()).build();
+
+    DataSource<CloseableReference<CloseableImage>> dataSource =
+      Fresco.getImagePipeline().fetchDecodedImage(request, mCallerContext);
+
+    DataSubscriber<CloseableReference<CloseableImage>> dataSubscriber =
+      new BaseDataSubscriber<CloseableReference<CloseableImage>>() {
+        @Override
+        protected void onNewResultImpl(
+            DataSource<CloseableReference<CloseableImage>> dataSource) {
+          if (!dataSource.isFinished()) {
+            return;
+          }
+          CloseableReference<CloseableImage> ref = dataSource.getResult();
+          if (ref != null) {
+            try {
+              CloseableImage image = ref.get();
+
+              WritableMap sizes = Arguments.createMap();
+              sizes.putInt("width", image.getWidth());
+              sizes.putInt("height", image.getHeight());
+
+              promise.resolve(sizes);
+            } catch (Exception e) {
+              promise.reject(ERROR_GET_SIZE_FAILURE, e);
+            } finally {
+              CloseableReference.closeSafely(ref);
+            }
+          } else {
+            promise.reject(ERROR_GET_SIZE_FAILURE);
+          }
+        }
+
+        @Override
+        protected void onFailureImpl(DataSource<CloseableReference<CloseableImage>> dataSource) {
+          promise.reject(ERROR_GET_SIZE_FAILURE, dataSource.getFailureCause());
+        }
+      };
+    dataSource.subscribe(dataSubscriber, CallerThreadExecutor.getInstance());
+  }
+
+  /**
+   * Fetch the width and height of the given image with headers.
+   *
+   * @param uriString the URI of the remote image to prefetch
+   * @param headers headers send with the request
+   * @param promise the promise that is fulfilled when the image is successfully prefetched
+   *                or rejected when there is an error
+   */
+  @ReactMethod
+  public void getSizeWithHeaders(
+      final String uriString,
+      final ReadableMap headers,
+      final Promise promise) {
+    if (uriString == null || uriString.isEmpty()) {
+      promise.reject(ERROR_INVALID_URI, "Cannot get the size of an image for an empty URI");
+      return;
+    }
+
+    ImageSource source = new ImageSource(getReactApplicationContext(), uriString);
+    ImageRequestBuilder imageRequestBuilder = ImageRequestBuilder.newBuilderWithSource(source.getUri());
+    ImageRequest request = ReactNetworkImageRequest.fromBuilderWithHeaders(imageRequestBuilder, headers);
 
     DataSource<CloseableReference<CloseableImage>> dataSource =
       Fresco.getImagePipeline().fetchDecodedImage(request, mCallerContext);
@@ -173,6 +241,28 @@ public class ImageLoaderModule extends ReactContextBaseJavaModule implements
     if (request != null) {
       request.close();
     }
+  }
+
+  @ReactMethod
+  public void queryCache(final ReadableArray uris, final Promise promise) {
+    // perform cache interrogation in async task as disk cache checks are expensive
+    new GuardedAsyncTask<Void, Void>(getReactApplicationContext()) {
+      @Override
+      protected void doInBackgroundGuarded(Void... params) {
+        WritableMap result = Arguments.createMap();
+        ImagePipeline imagePipeline = Fresco.getImagePipeline();
+        for (int i = 0; i < uris.size(); i++) {
+          String uriString = uris.getString(i);
+          final Uri uri = Uri.parse(uriString);
+          if (imagePipeline.isInBitmapMemoryCache(uri)) {
+            result.putString(uriString, "memory");
+          } else if (imagePipeline.isInDiskCacheSync(uri)) {
+            result.putString(uriString, "disk");
+          }
+        }
+        promise.resolve(result);
+      }
+    }.executeOnExecutor(GuardedAsyncTask.THREAD_POOL_EXECUTOR);
   }
 
   private void registerRequest(int requestId, DataSource<Void> request) {

@@ -1,10 +1,8 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTStatusBarManager.h"
@@ -13,11 +11,13 @@
 #import "RCTLog.h"
 #import "RCTUtils.h"
 
+#if !TARGET_OS_TV
 @implementation RCTConvert (UIStatusBar)
 
 RCT_ENUM_CONVERTER(UIStatusBarStyle, (@{
   @"default": @(UIStatusBarStyleDefault),
   @"light-content": @(UIStatusBarStyleLightContent),
+  @"dark-content": @(UIStatusBarStyleDefault),
 }), UIStatusBarStyleDefault, integerValue);
 
 RCT_ENUM_CONVERTER(UIStatusBarAnimation, (@{
@@ -27,6 +27,7 @@ RCT_ENUM_CONVERTER(UIStatusBarAnimation, (@{
 }), UIStatusBarAnimationNone, integerValue);
 
 @end
+#endif
 
 @implementation RCTStatusBarManager
 
@@ -49,6 +50,8 @@ RCT_EXPORT_MODULE()
   return @[@"statusBarFrameDidChange",
            @"statusBarFrameWillChange"];
 }
+
+#if !TARGET_OS_TV
 
 - (void)startObserving
 {
@@ -94,7 +97,7 @@ RCT_EXPORT_MODULE()
 RCT_EXPORT_METHOD(getHeight:(RCTResponseSenderBlock)callback)
 {
   callback(@[@{
-    @"height": @([UIApplication sharedApplication].statusBarFrame.size.height),
+    @"height": @(RCTSharedApplication().statusBarFrame.size.height),
   }]);
 }
 
@@ -105,9 +108,12 @@ RCT_EXPORT_METHOD(setStyle:(UIStatusBarStyle)statusBarStyle
     RCTLogError(@"RCTStatusBarManager module requires that the \
                 UIViewControllerBasedStatusBarAppearance key in the Info.plist is set to NO");
   } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     [RCTSharedApplication() setStatusBarStyle:statusBarStyle
                                      animated:animated];
   }
+#pragma clang diagnostic pop
 }
 
 RCT_EXPORT_METHOD(setHidden:(BOOL)hidden
@@ -117,8 +123,11 @@ RCT_EXPORT_METHOD(setHidden:(BOOL)hidden
     RCTLogError(@"RCTStatusBarManager module requires that the \
                 UIViewControllerBasedStatusBarAppearance key in the Info.plist is set to NO");
   } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     [RCTSharedApplication() setStatusBarHidden:hidden
                                  withAnimation:animation];
+#pragma clang diagnostic pop
   }
 }
 
@@ -126,5 +135,7 @@ RCT_EXPORT_METHOD(setNetworkActivityIndicatorVisible:(BOOL)visible)
 {
   RCTSharedApplication().networkActivityIndicatorVisible = visible;
 }
+
+#endif //TARGET_OS_TV
 
 @end

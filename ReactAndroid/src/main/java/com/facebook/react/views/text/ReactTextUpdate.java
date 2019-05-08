@@ -1,18 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.views.text;
 
+import android.text.Layout;
 import android.text.Spannable;
-import android.view.Gravity;
-
-import com.facebook.csslayout.Spacing;
 
 /**
  * Class that contains the data needed for a text update.
@@ -28,25 +24,90 @@ public class ReactTextUpdate {
   private final float mPaddingTop;
   private final float mPaddingRight;
   private final float mPaddingBottom;
-  private final float mLineHeight;
   private final int mTextAlign;
+  private final int mTextBreakStrategy;
+  private final int mSelectionStart;
+  private final int mSelectionEnd;
+  private final int mJustificationMode;
+
+  /**
+   * @deprecated Use a non-deprecated constructor for ReactTextUpdate instead. This one remains
+   * because it's being used by a unit test that isn't currently open source.
+   */
+  @Deprecated
+  public ReactTextUpdate(
+      Spannable text,
+      int jsEventCounter,
+      boolean containsImages,
+      float paddingStart,
+      float paddingTop,
+      float paddingEnd,
+      float paddingBottom,
+      int textAlign) {
+    this(text,
+        jsEventCounter,
+        containsImages,
+        paddingStart,
+        paddingTop,
+        paddingEnd,
+        paddingBottom,
+        textAlign,
+        Layout.BREAK_STRATEGY_HIGH_QUALITY,
+        Layout.JUSTIFICATION_MODE_NONE,
+        -1,
+        -1);
+  }
 
   public ReactTextUpdate(
     Spannable text,
     int jsEventCounter,
     boolean containsImages,
-    Spacing padding,
-    float lineHeight,
-    int textAlign) {
+    float paddingStart,
+    float paddingTop,
+    float paddingEnd,
+    float paddingBottom,
+    int textAlign,
+    int textBreakStrategy,
+    int justificationMode) {
+    this(text,
+        jsEventCounter,
+        containsImages,
+        paddingStart,
+        paddingTop,
+        paddingEnd,
+        paddingBottom,
+        textAlign,
+        textBreakStrategy,
+        justificationMode,
+        -1,
+        -1);
+  }
+
+  public ReactTextUpdate(
+    Spannable text,
+    int jsEventCounter,
+    boolean containsImages,
+    float paddingStart,
+    float paddingTop,
+    float paddingEnd,
+    float paddingBottom,
+    int textAlign,
+    int textBreakStrategy,
+    int justificationMode,
+    int selectionStart,
+    int selectionEnd) {
     mText = text;
     mJsEventCounter = jsEventCounter;
     mContainsImages = containsImages;
-    mPaddingLeft = padding.get(Spacing.START);
-    mPaddingTop = padding.get(Spacing.TOP);
-    mPaddingRight = padding.get(Spacing.END);
-    mPaddingBottom = padding.get(Spacing.BOTTOM);
-    mLineHeight = lineHeight;
+    mPaddingLeft = paddingStart;
+    mPaddingTop = paddingTop;
+    mPaddingRight = paddingEnd;
+    mPaddingBottom = paddingBottom;
     mTextAlign = textAlign;
+    mTextBreakStrategy = textBreakStrategy;
+    mSelectionStart = selectionStart;
+    mSelectionEnd = selectionEnd;
+    mJustificationMode = justificationMode;
   }
 
   public Spannable getText() {
@@ -77,11 +138,23 @@ public class ReactTextUpdate {
     return mPaddingBottom;
   }
 
-  public float getLineHeight() {
-    return mLineHeight;
-  }
-
   public int getTextAlign() {
     return mTextAlign;
+  }
+
+  public int getTextBreakStrategy() {
+    return mTextBreakStrategy;
+  }
+
+  public int getJustificationMode() {
+    return mJustificationMode;
+  }
+
+  public int getSelectionStart() {
+    return mSelectionStart;
+  }
+
+  public int getSelectionEnd() {
+    return mSelectionEnd;
   }
 }
